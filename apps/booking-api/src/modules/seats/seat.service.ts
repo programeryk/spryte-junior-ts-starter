@@ -8,6 +8,8 @@ import type { Seat } from "./seat.types";
 
 const seatIdPattern = /^R\d+S\d+$/;
 
+// Simple in-process queue so reservations run one at a time.
+// Good enough for this local single-instance MVP.
 let reservationQueue: Promise<void> = Promise.resolve();
 
 const runExclusive = async <T>(task: () => Promise<T>): Promise<T> => {
@@ -29,7 +31,8 @@ const validateSeatId = (seatId: string): void => {
 
 export const seatService = {
   async getSeats(): Promise<Seat[]> {
-    return seatRepository.getAll();
+    const seats = await seatRepository.getAll();
+    return seats.map((seat) => ({ ...seat }));
   },
 
   async reserveSeat(seatId: string): Promise<Seat> {
