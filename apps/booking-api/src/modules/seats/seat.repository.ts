@@ -9,10 +9,17 @@ let seatsCache: Seat[] | null = null;
 
 const readSeatsFromFile = async (): Promise<Seat[]> => {
   const fileContent = await readFile(seatsFilePath, "utf-8");
-  return JSON.parse(fileContent) as Seat[];
+  return JSON.parse(fileContent) as Seat[]; //no validation for JSON shape
 };
 
 const cloneSeat = (seat: Seat): Seat => ({ ...seat });
+
+const getCacheOrThrow = (): Seat[] => {
+  if (!seatsCache) {
+    throw new Error("Repozytorium miejsc niezinicjalizowane.");
+  }
+  return seatsCache;
+};
 
 export const seatRepository = {
   async initialize(): Promise<void> {
@@ -25,12 +32,7 @@ export const seatRepository = {
 
   async getAll(): Promise<Seat[]> {
     await this.initialize();
-    return seatsCache!.map(cloneSeat);
-  },
-
-  async findById(seatId: string): Promise<Seat | undefined> {
-    await this.initialize();
-    return seatsCache!.find((seat) => seat.id === seatId);
+    return getCacheOrThrow().map(cloneSeat);
   },
 
   async saveAll(seats: Seat[]): Promise<void> {
