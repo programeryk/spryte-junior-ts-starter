@@ -5,7 +5,7 @@ This repository contains a small cinema seat booking MVP built with:
 - `apps/booking-app`: Next.js frontend on `http://localhost:3000`
 - `apps/booking-api`: Express API on `http://localhost:3001`
 
-The goal is to keep the solution interview-friendly: simple, readable, and complete enough to demonstrate a full booking flow without overengineering the backend.
+The goal is to provide a simple, clear booking flow with a lightweight backend and persistent seat state suitable for local development.
 
 ## MVP Scope
 
