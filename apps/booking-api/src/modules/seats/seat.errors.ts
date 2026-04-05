@@ -5,6 +5,13 @@ export class SeatNotFoundError extends Error {
   }
 }
 
+export class InvalidSeatIdError extends Error {
+  constructor(seatId: string) {
+    super(`Seat id "${seatId}" is invalid.`);
+    this.name = "InvalidSeatIdError";
+  }
+}
+
 export class SeatAlreadyReservedError extends Error {
   constructor(seatId: string) {
     super(`Seat ${seatId} is already reserved.`);
