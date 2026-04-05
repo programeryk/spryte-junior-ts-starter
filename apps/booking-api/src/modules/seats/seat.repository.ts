@@ -16,28 +16,27 @@ const cloneSeat = (seat: Seat): Seat => ({ ...seat });
 
 const getCacheOrThrow = (): Seat[] => {
   if (!seatsCache) {
-    throw new Error("Repozytorium miejsc niezinicjalizowane.");
+    throw new Error("Seat repository is not initialized"); //using english for debugging and collaboration coherence
   }
   return seatsCache;
 };
 
-export const seatRepository = {
-  async initialize(): Promise<void> {
-    if (seatsCache) {
-      return;
-    }
+const initialize = async (): Promise<void> => {
+  if (seatsCache) {
+    return;
+  }
+  seatsCache = await readSeatsFromFile();
+}
 
-    seatsCache = await readSeatsFromFile();
-  },
+export const seatRepository = {
 
   async getAll(): Promise<Seat[]> {
-    await this.initialize();
+    await initialize();
     return getCacheOrThrow().map(cloneSeat);
   },
 
   async saveAll(seats: Seat[]): Promise<void> {
     seatsCache = seats.map(cloneSeat);
-
     await writeFile(seatsFilePath, JSON.stringify(seatsCache, null, 2), "utf-8");
   },
 };
