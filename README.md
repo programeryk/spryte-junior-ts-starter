@@ -1,48 +1,130 @@
-# Zadanie Rekrutacyjne: Mini Cinema Booking 🎬
+# Mini Cinema Booking MVP
 
-Cześć! Cieszymy się, że bierzesz udział w naszym procesie rekrutacyjnym.
+This repository contains a small cinema seat booking MVP built with:
 
-Chcemy sprawdzić Twoje umiejętności w praktyce, dlatego przygotowaliśmy zadanie, które odzwierciedla realne (choć uproszczone) wyzwania, z jakimi mierzymy się na co dzień. Nie szukamy perfekcyjnego kodu, który powstawał tygodniami – szukamy logicznego myślenia, znajomości TypeScripta i dobrych praktyk.
+- `apps/booking-app`: Next.js frontend on `http://localhost:3000`
+- `apps/booking-api`: Express API on `http://localhost:3001`
 
-## 🎯 Cel Biznesowy
+The goal is to keep the solution interview-friendly: simple, readable, and complete enough to demonstrate a full booking flow without overengineering the backend.
 
-Lokalne kino potrzebuje prostego systemu rezerwacji miejsc. Twoim zadaniem jest stworzenie aplikacji, która pozwoli użytkownikowi wybrać miejsce na sali i spróbować je zarezerwować.
+## MVP Scope
 
-Aplikacja składa się z dwóch części:
+- Single room, single screening
+- `5 x 8` seat layout
+- Frontend supports multi-select
+- Backend keeps a simple single-seat reservation endpoint
+- Seat data is stored in JSON, loaded into memory on startup, and written back after successful reservations
+- `selected` is frontend-only UI state and is not persisted by the API
 
-1. **Frontend (Next.js):** Widok sali kinowej i interfejs użytkownika.
-2. **Backend (Express.js/Nest.js):** API zarządzające stanem miejsc.
+## Planned API Contract
 
-(Zamiast bazy danych możesz trzymać dane w pamięci lub pliku JSON)
+### `GET /seats`
 
-## 📝 Funkcjonalności do zrealizowania
+- `200` with `Seat[]`
 
-### 1. Widok Sali (Frontend)
+### `POST /seats/:seatId/reserve`
 
-* Wyświetl siatkę miejsc (np. 5 rzędów po 8 miejsc).
-* Każde miejsce powinno mieć jeden z trzech stanów:
-* **Wolne** (można kliknąć i wybrać).
-* **Zajęte** (nie można wybrać, oznaczone innym kolorem).
-* **Wybrane** (kliknięte przez użytkownika, gotowe do rezerwacji).
+- `200` with the updated `Seat`
+- `400` for invalid input
+- `404` for unknown seat
+- `409` for an already reserved seat
 
-* Pod siatką powinien znajdować się przycisk "Rezerwuj", który wysyła żądanie do API dla wybranych miejsc.
+Normalized error shape:
 
-### 2. API (Backend)
+```json
+{
+  "error": "SEAT_ALREADY_RESERVED",
+  "message": "Seat R1S1 is already reserved."
+}
+```
 
-* Endpoint do pobrania aktualnego stanu wszystkich miejsc.
-* Endpoint do rezerwacji konkretnego miejsca.
+Core types:
 
-## 💡 Na co będziemy zwracać uwagę?
+```ts
+type SeatStatus = "free" | "reserved";
 
-* Pamiętaj aby obsłużyć możliwie wszystkie przypadki brzegowe.
-* Kod powinien być czytelny i zgodny z aktualnymi standardami
-* Dodaj plik README.md, podaj w nim komendę/y uruchamiające aplikację
+type Seat = {
+  id: string;
+  row: number;
+  number: number;
+  status: SeatStatus;
+};
+```
 
-## 🚀 Jak zacząć i jak oddać zadanie?
+## Project Structure
 
-1. Możesz wykorzystać scaffold zawarty w tym folderze lub stworzyć repozytorium od zera (tooling dowolny).
-2. Nie spędzaj nad tym zadaniem całego weekendu. Zależy nam na MVP (Minimum Viable Product).
-3. Rozwiązanie prześlij nam w formie linku do repozytorium na GitHubie/GitLabie.
+```text
+apps/
+  booking-app/
+  booking-api/
+    data/
+      seats.json
+    src/
+      app.ts
+      index.ts
+      modules/
+        seats/
+          seat.errors.ts
+          seat.types.ts
+```
 
-Powodzenia!
-W razie pytań dotyczących treści zadania – śmiało pisz.
+The backend is being built feature-first so that seat-related types, errors, persistence, services, and routes stay grouped together as the API grows.
+
+## Getting Started
+
+Install dependencies from the repository root:
+
+```powershell
+corepack pnpm install
+```
+
+Start the API:
+
+```powershell
+corepack pnpm --dir apps/booking-api dev
+```
+
+Start the frontend in a separate terminal:
+
+```powershell
+corepack pnpm --dir apps/booking-app dev
+```
+
+Open:
+
+- Frontend: `http://localhost:3000`
+- API: `http://localhost:3001`
+
+## Backend Notes
+
+- The API defaults to port `3001`
+- JSON persistence is acceptable for this local MVP
+- Reservations should survive an API restart because the full seat state is written back to `apps/booking-api/data/seats.json`
+- This approach is not suitable for real concurrency or multi-instance deployment
+
+## Manual Acceptance Goals
+
+- `GET /seats` returns exactly `40` seats
+- Reserved seats are visible and cannot be selected
+- Free seats can be selected and deselected
+- The reserve action is disabled when no seats are selected
+- Reserving a free seat updates the UI after a refetch
+- Reserving the same seat again returns `409`
+- Unknown seat IDs return `404`
+- Partial success is handled cleanly when multiple seats are selected
+- Restarting the API preserves reservations from the JSON file
+
+## Assumptions
+
+- No authentication, payments, or user accounts
+- No seat hold timeout logic
+- No automated test suite in the MVP
+- The single-seat reservation endpoint is an intentional scope choice
+
+## Future Improvements
+
+- Batch reservation endpoint
+- Automated tests
+- Database-backed persistence
+- Atomic reservations and locking
+- Multiple rooms and showtimes
