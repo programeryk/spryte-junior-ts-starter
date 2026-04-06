@@ -1,35 +1,64 @@
 # Mini Cinema Booking MVP
 
-This repository contains a small cinema seat booking MVP built with:
+To proste MVP systemu rezerwacji miejsc w kinie zbudowane w monorepo:
 
-- `apps/booking-app`: Next.js frontend on `http://localhost:3000`
-- `apps/booking-api`: Express API on `http://localhost:3001`
+- `apps/booking-app` - frontend w Next.js dostępny pod `http://localhost:3000`
+- `apps/booking-api` - backend w Expressie dostępny pod `http://localhost:3001`
 
-The goal is to provide a simple, clear booking flow with a lightweight backend and persistent seat state suitable for local development.
+Aplikacja pozwala pobrać aktualny stan sali, zaznaczyć wolne miejsca i zarezerwować je z poziomu interfejsu użytkownika.
 
-## MVP Scope
+## Zakres MVP
 
-- Single room, single screening
-- `5 x 8` seat layout
-- Frontend supports multi-select
-- Backend keeps a simple single-seat reservation endpoint
-- Seat data is stored in JSON, loaded into memory on startup, and written back after successful reservations
-- `selected` is frontend-only UI state and is not persisted by the API
+- jedna sala
+- jeden seans
+- układ `5 x 8`
+- wybór wielu miejsc po stronie frontendu
+- prosty backend z endpointem rezerwującym jedno miejsce naraz
+- stan miejsc zapisywany w pliku JSON
+- dane ładowane do pamięci przy starcie API i zapisywane po udanej rezerwacji
+- `selected` istnieje tylko w stanie UI i nie jest zapisywane po stronie serwera
 
-## Planned API Contract
+## Uruchomienie projektu
+
+Najpierw zainstaluj zależności w katalogu głównym repozytorium:
+
+```powershell
+corepack pnpm install
+```
+
+Uruchom backend:
+
+```powershell
+corepack pnpm --dir apps/booking-api dev
+```
+
+Uruchom frontend w drugim terminalu:
+
+```powershell
+corepack pnpm --dir apps/booking-app dev
+```
+
+Po uruchomieniu aplikacje będą dostępne pod adresami:
+
+- frontend: `http://localhost:3000`
+- API: `http://localhost:3001`
+
+## API
 
 ### `GET /seats`
 
-- `200` with `Seat[]`
+Zwraca pełną listę miejsc jako `Seat[]`.
 
 ### `POST /seats/:seatId/reserve`
 
-- `200` with the updated `Seat`
-- `400` for invalid input
-- `404` for unknown seat
-- `409` for an already reserved seat
+Próbuje zarezerwować jedno miejsce i zwraca:
 
-Normalized error shape:
+- `200` z zaktualizowanym obiektem `Seat`
+- `400` dla nieprawidłowego identyfikatora miejsca
+- `404` gdy miejsce nie istnieje
+- `409` gdy miejsce jest już zarezerwowane
+
+Przykładowy format błędu:
 
 ```json
 {
@@ -38,7 +67,7 @@ Normalized error shape:
 }
 ```
 
-Core types:
+## Główne typy
 
 ```ts
 type SeatStatus = "free" | "reserved";
@@ -51,7 +80,7 @@ type Seat = {
 };
 ```
 
-## Project Structure
+## Struktura projektu
 
 ```text
 apps/
@@ -65,66 +94,43 @@ apps/
       modules/
         seats/
           seat.errors.ts
+          seat.repository.ts
+          seat.routes.ts
+          seat.service.ts
           seat.types.ts
 ```
 
-The backend is being built feature-first so that seat-related types, errors, persistence, services, and routes stay grouped together as the API grows.
+## Założenia
 
-## Getting Started
+- brak logowania i kont użytkowników
+- brak płatności
+- brak mechanizmu czasowego "hold" na miejsce
+- brak automatycznych testów w zakresie MVP
+- zakres backendu celowo opiera się o pojedynczy endpoint rezerwacji miejsca
 
-Install dependencies from the repository root:
+## Ograniczenia obecnego rozwiązania
 
-```powershell
-corepack pnpm install
-```
+- zapis do JSON jest wystarczający dla lokalnego MVP, ale nie nadaje się do środowiska produkcyjnego
+- dane są trzymane w pamięci po starcie API, więc ręczna zmiana pliku JSON wymaga restartu backendu
+- rozwiązanie nie obsługuje wielu instancji aplikacji ani pełnej kontroli współbieżności
 
-Start the API:
+## Ręczna lista kontrolna
 
-```powershell
-corepack pnpm --dir apps/booking-api dev
-```
+- `GET /seats` zwraca dokładnie `40` miejsc
+- miejsca już zarezerwowane są widoczne i nie da się ich zaznaczyć
+- wolne miejsca można zaznaczać i odznaczać
+- przycisk `Rezerwuj` jest wyłączony, gdy nic nie wybrano
+- po udanej rezerwacji frontend odświeża stan miejsc
+- ponowna rezerwacja tego samego miejsca kończy się konfliktem `409`
+- nieznane identyfikatory miejsc zwracają `404`
+- przy wyborze wielu miejsc częściowy sukces jest obsługiwany poprawnie
+- restart backendu zachowuje rezerwacje zapisane w `apps/booking-api/data/seats.json`
 
-Start the frontend in a separate terminal:
+## Dalszy rozwój
 
-```powershell
-corepack pnpm --dir apps/booking-app dev
-```
-
-Open:
-
-- Frontend: `http://localhost:3000`
-- API: `http://localhost:3001`
-
-## Backend Notes
-
-- The API defaults to port `3001`
-- JSON persistence is acceptable for this local MVP
-- Reservations should survive an API restart because the full seat state is written back to `apps/booking-api/data/seats.json`
-- This approach is not suitable for real concurrency or multi-instance deployment
-
-## Manual Acceptance Goals
-
-- `GET /seats` returns exactly `40` seats
-- Reserved seats are visible and cannot be selected
-- Free seats can be selected and deselected
-- The reserve action is disabled when no seats are selected
-- Reserving a free seat updates the UI after a refetch
-- Reserving the same seat again returns `409`
-- Unknown seat IDs return `404`
-- Partial success is handled cleanly when multiple seats are selected
-- Restarting the API preserves reservations from the JSON file
-
-## Assumptions
-
-- No authentication, payments, or user accounts
-- No seat hold timeout logic
-- No automated test suite in the MVP
-- The single-seat reservation endpoint is an intentional scope choice
-
-## Future Improvements
-
-- Batch reservation endpoint
-- Automated tests
-- Database-backed persistence
-- Atomic reservations and locking
-- Multiple rooms and showtimes
+- endpoint do rezerwacji wielu miejsc w jednym żądaniu
+- automatyczne testy frontendowe i backendowe
+- przejście z pliku JSON na bazę danych
+- atomowe rezerwacje i lepsza kontrola współbieżności
+- obsługa wielu sal i wielu seansów
+- lepsza konfiguracja środowisk przez zmienne środowiskowe
