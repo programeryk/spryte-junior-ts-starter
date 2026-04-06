@@ -18,6 +18,7 @@ type ApiError = {
 
 type LoadSeatsOptions = {
   keepFeedback?: boolean;
+  showBlockingError?: boolean;
   signal?: AbortSignal;
 };
 
@@ -103,13 +104,16 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [warningMessage, setWarningMessage] = useState<string | null>(null);
 
   const loadSeats = useCallback(
     async ({
       keepFeedback = true,
+      showBlockingError = true,
       signal,
-    }: LoadSeatsOptions = {}): Promise<void> => {
+    }: LoadSeatsOptions = {}): Promise<boolean> => {
       setErrorMessage(null);
+      setWarningMessage(null);
 
       if (!keepFeedback) {
         setFeedbackMessage(null);
@@ -128,7 +132,7 @@ export default function Home() {
         const nextSeats = (await response.json()) as Seat[];
 
         if (signal?.aborted) {
-          return;
+          return false;
         }
 
         setSeats(nextSeats);
@@ -139,16 +143,27 @@ export default function Home() {
             ),
           ),
         );
+        return true;
       } catch (error) {
         if (signal?.aborted) {
-          return;
+          return false;
         }
 
         if (error instanceof DOMException && error.name === "AbortError") {
-          return;
+          return false;
         }
 
-        setErrorMessage("Nie udalo sie wczytac ukladu sali. Sprobuj ponownie.");
+        if (showBlockingError) {
+          setErrorMessage(
+            "Nie udalo sie wczytac ukladu sali. Sprobuj ponownie.",
+          );
+        } else {
+          setWarningMessage(
+            "Nie udalo sie odswiezyc ukladu sali. Odswiez strone, aby pobrac najnowszy stan.",
+          );
+        }
+
+        return false;
       }
     },
     [],
@@ -201,6 +216,7 @@ export default function Home() {
     setIsSubmitting(true);
     setErrorMessage(null);
     setFeedbackMessage(null);
+    setWarningMessage(null);
 
     const seatIdsToReserve = [...selectedSeatIds];
     let successCount = 0;
@@ -240,10 +256,20 @@ export default function Home() {
         }
       }
 
-      await loadSeats();
+      const reservationSummary = getReservationSummary(
+        successCount,
+        conflictCount,
+        failureCount,
+      );
+      const didRefreshSeats = await loadSeats({
+        showBlockingError: false,
+      });
+
       setSelectedSeatIds([]);
       setFeedbackMessage(
-        getReservationSummary(successCount, conflictCount, failureCount),
+        didRefreshSeats
+          ? reservationSummary
+          : `${reservationSummary} Nie udalo sie odswiezyc widoku po rezerwacji.`,
       );
     } finally {
       setIsSubmitting(false);
@@ -395,6 +421,12 @@ export default function Home() {
               {feedbackMessage ? (
                 <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-6 py-4 text-sm text-emerald-800">
                   {feedbackMessage}
+                </div>
+              ) : null}
+
+              {warningMessage ? (
+                <div className="rounded-3xl border border-amber-200 bg-amber-50 px-6 py-4 text-sm text-amber-800">
+                  {warningMessage}
                 </div>
               ) : null}
             </div>
