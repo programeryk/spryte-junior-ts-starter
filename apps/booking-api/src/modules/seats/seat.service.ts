@@ -21,7 +21,7 @@ const runExclusive = async <T>(task: () => Promise<T>): Promise<T> => {
   );
 
   return run;
-};
+}; 
 
 const validateSeatId = (seatId: string): void => {
   if (!seatIdPattern.test(seatId)) {
