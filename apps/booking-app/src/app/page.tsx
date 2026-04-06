@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type SeatStatus = "free" | "reserved";
 
@@ -14,6 +14,11 @@ type Seat = {
 type ApiError = {
   error: string;
   message: string;
+};
+
+type LoadSeatsOptions = {
+  keepFeedback?: boolean;
+  signal?: AbortSignal;
 };
 
 const apiBaseUrl =
@@ -31,6 +36,36 @@ const seatStyles: Record<SeatStatus, string> = {
     "cursor-not-allowed border-slate-200 bg-slate-200 text-slate-500 opacity-70",
 };
 
+const getPolishCountForm = (
+  count: number,
+  singular: string,
+  paucal: string,
+  plural: string,
+): string => {
+  const lastTwoDigits = count % 100;
+  const lastDigit = count % 10;
+
+  if (count === 1) {
+    return singular;
+  }
+
+  if (lastTwoDigits >= 12 && lastTwoDigits <= 14) {
+    return plural;
+  }
+
+  if (lastDigit >= 2 && lastDigit <= 4) {
+    return paucal;
+  }
+
+  return plural;
+};
+
+const getSeatWord = (count: number): string =>
+  getPolishCountForm(count, "miejsce", "miejsca", "miejsc");
+
+const getFailedReservationWord = (count: number): string =>
+  getPolishCountForm(count, "rezerwacja", "rezerwacje", "rezerwacji");
+
 const getReservationSummary = (
   successCount: number,
   conflictCount: number,
@@ -39,20 +74,18 @@ const getReservationSummary = (
   const parts: string[] = [];
 
   if (successCount > 0) {
-    parts.push(
-      `Zarezerwowano ${successCount} ${successCount === 1 ? "miejsce" : "miejsca"}.`,
-    );
+    parts.push(`Zarezerwowano ${successCount} ${getSeatWord(successCount)}.`);
   }
 
   if (conflictCount > 0) {
     parts.push(
-      `${conflictCount} ${conflictCount === 1 ? "miejsce bylo juz zajete" : "miejsca byly juz zajete"}.`,
+      `Nie udalo sie zarezerwowac ${conflictCount} ${getSeatWord(conflictCount)} z powodu wczesniejszej rezerwacji.`,
     );
   }
 
   if (failureCount > 0) {
     parts.push(
-      `${failureCount} ${failureCount === 1 ? "rezerwacja nie powiodla sie" : "rezerwacje nie powiodly sie"}.`,
+      `W ${failureCount} ${getFailedReservationWord(failureCount)} wystapil blad.`,
     );
   }
 
@@ -71,34 +104,21 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
-  const loadSeats = async (): Promise<void> => {
-    setErrorMessage(null);
+  const loadSeats = useCallback(
+    async ({
+      keepFeedback = true,
+      signal,
+    }: LoadSeatsOptions = {}): Promise<void> => {
+      setErrorMessage(null);
 
-    try {
-      const response = await fetch(`${apiBaseUrl}/seats`, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        throw new Error("Nie udalo sie pobrac miejsc.");
+      if (!keepFeedback) {
+        setFeedbackMessage(null);
       }
-
-      const nextSeats = (await response.json()) as Seat[];
-      setSeats(nextSeats);
-    } catch {
-      setErrorMessage("Nie udalo sie wczytac ukladu sali. Sprobuj ponownie.");
-    }
-  };
-
-  useEffect(() => {
-    let ignore = false;
-
-    const initialize = async () => {
-      setIsLoading(true);
 
       try {
         const response = await fetch(`${apiBaseUrl}/seats`, {
           cache: "no-store",
+          signal,
         });
 
         if (!response.ok) {
@@ -107,29 +127,49 @@ export default function Home() {
 
         const nextSeats = (await response.json()) as Seat[];
 
-        if (!ignore) {
-          setSeats(nextSeats);
-          setErrorMessage(null);
+        if (signal?.aborted) {
+          return;
         }
-      } catch {
-        if (!ignore) {
-          setErrorMessage(
-            "Nie udalo sie wczytac ukladu sali. Sprobuj ponownie.",
-          );
-        }
-      } finally {
-        if (!ignore) {
-          setIsLoading(false);
-        }
-      }
-    };
 
-    void initialize();
+        setSeats(nextSeats);
+        setSelectedSeatIds((currentSelection) =>
+          currentSelection.filter((seatId) =>
+            nextSeats.some(
+              (seat) => seat.id === seatId && seat.status === "free",
+            ),
+          ),
+        );
+      } catch (error) {
+        if (signal?.aborted) {
+          return;
+        }
+
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setErrorMessage("Nie udalo sie wczytac ukladu sali. Sprobuj ponownie.");
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsLoading(true);
+
+    void loadSeats({
+      signal: controller.signal,
+    }).finally(() => {
+      if (!controller.signal.aborted) {
+        setIsLoading(false);
+      }
+    });
 
     return () => {
-      ignore = true;
+      controller.abort();
     };
-  }, []);
+  }, [loadSeats]);
 
   const rows = Array.from({ length: 5 }, (_, rowIndex) => rowIndex + 1).map(
     (row) => ({
@@ -280,7 +320,9 @@ export default function Home() {
                   type="button"
                   onClick={() => {
                     setIsLoading(true);
-                    void loadSeats().finally(() => setIsLoading(false));
+                    void loadSeats({ keepFeedback: false }).finally(() =>
+                      setIsLoading(false),
+                    );
                   }}
                   className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
                 >
