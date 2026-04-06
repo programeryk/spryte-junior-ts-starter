@@ -11,32 +11,95 @@ type Seat = {
   status: SeatStatus;
 };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+type ApiError = {
+  error: string;
+  message: string;
+};
 
-const legendItems: Array<{ label: string; status: SeatStatus }> = [
-  { label: "Wolne", status: "free" },
-  { label: "Zarezerwowane", status: "reserved" },
+const apiBaseUrl =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+
+const legendItems = [
+  { label: "Wolne", colorClass: "border-emerald-300 bg-emerald-400" },
+  { label: "Wybrane", colorClass: "border-amber-300 bg-amber-400" },
+  { label: "Zarezerwowane", colorClass: "border-slate-300 bg-slate-300" },
 ];
 
 const seatStyles: Record<SeatStatus, string> = {
-  free: "border-slate-300 bg-white text-slate-900 shadow-sm",
-  reserved: "border-slate-200 bg-slate-200 text-slate-500 opacity-70",
+  free: "border-slate-300 bg-white text-slate-900 shadow-sm hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50",
+  reserved:
+    "cursor-not-allowed border-slate-200 bg-slate-200 text-slate-500 opacity-70",
+};
+
+const getReservationSummary = (
+  successCount: number,
+  conflictCount: number,
+  failureCount: number,
+): string => {
+  const parts: string[] = [];
+
+  if (successCount > 0) {
+    parts.push(
+      `Zarezerwowano ${successCount} ${successCount === 1 ? "miejsce" : "miejsca"}.`,
+    );
+  }
+
+  if (conflictCount > 0) {
+    parts.push(
+      `${conflictCount} ${conflictCount === 1 ? "miejsce bylo juz zajete" : "miejsca byly juz zajete"}.`,
+    );
+  }
+
+  if (failureCount > 0) {
+    parts.push(
+      `${failureCount} ${failureCount === 1 ? "rezerwacja nie powiodla sie" : "rezerwacje nie powiodly sie"}.`,
+    );
+  }
+
+  if (parts.length === 0) {
+    return "Nie wybrano miejsc do rezerwacji.";
+  }
+
+  return parts.join(" ");
 };
 
 export default function Home() {
   const [seats, setSeats] = useState<Seat[]>([]);
+  const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
+  const loadSeats = async (): Promise<void> => {
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/seats`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Nie udalo sie pobrac miejsc.");
+      }
+
+      const nextSeats = (await response.json()) as Seat[];
+      setSeats(nextSeats);
+    } catch {
+      setErrorMessage("Nie udalo sie wczytac ukladu sali. Sprobuj ponownie.");
+    }
+  };
 
   useEffect(() => {
     let ignore = false;
 
-    const loadSeats = async () => {
+    const initialize = async () => {
       setIsLoading(true);
-      setErrorMessage(null);
 
       try {
-        const response = await fetch(`${apiBaseUrl}/seats`);
+        const response = await fetch(`${apiBaseUrl}/seats`, {
+          cache: "no-store",
+        });
 
         if (!response.ok) {
           throw new Error("Nie udalo sie pobrac miejsc.");
@@ -46,10 +109,13 @@ export default function Home() {
 
         if (!ignore) {
           setSeats(nextSeats);
+          setErrorMessage(null);
         }
       } catch {
         if (!ignore) {
-          setErrorMessage("Nie udalo sie wczytac ukladu sali. Sprobuj ponownie.");
+          setErrorMessage(
+            "Nie udalo sie wczytac ukladu sali. Sprobuj ponownie.",
+          );
         }
       } finally {
         if (!ignore) {
@@ -58,19 +124,91 @@ export default function Home() {
       }
     };
 
-    void loadSeats();
+    void initialize();
 
     return () => {
       ignore = true;
     };
   }, []);
 
-  const rows = Array.from({ length: 8 }, (_, rowIndex) => rowIndex + 1).map((row) => ({
-    row,
-    seats: seats
-      .filter((seat) => seat.row === row)
-      .sort((left, right) => left.number - right.number),
-  }));
+  const rows = Array.from({ length: 5 }, (_, rowIndex) => rowIndex + 1).map(
+    (row) => ({
+      row,
+      seats: seats
+        .filter((seat) => seat.row === row)
+        .sort((left, right) => left.number - right.number),
+    }),
+  );
+
+  const toggleSeatSelection = (seat: Seat) => {
+    if (seat.status === "reserved" || isSubmitting) {
+      return;
+    }
+
+    setFeedbackMessage(null);
+    setSelectedSeatIds((currentSelection) =>
+      currentSelection.includes(seat.id)
+        ? currentSelection.filter((seatId) => seatId !== seat.id)
+        : [...currentSelection, seat.id],
+    );
+  };
+
+  const handleReservation = async () => {
+    if (selectedSeatIds.length === 0 || isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    setFeedbackMessage(null);
+
+    const seatIdsToReserve = [...selectedSeatIds];
+    let successCount = 0;
+    let conflictCount = 0;
+    let failureCount = 0;
+
+    try {
+      for (const seatId of seatIdsToReserve) {
+        try {
+          const response = await fetch(
+            `${apiBaseUrl}/seats/${seatId}/reserve`,
+            {
+              method: "POST",
+            },
+          );
+
+          if (response.ok) {
+            successCount += 1;
+            continue;
+          }
+
+          const apiError = (await response
+            .json()
+            .catch(() => null)) as ApiError | null;
+
+          if (
+            response.status === 409 ||
+            apiError?.error === "SEAT_ALREADY_RESERVED"
+          ) {
+            conflictCount += 1;
+            continue;
+          }
+
+          failureCount += 1;
+        } catch {
+          failureCount += 1;
+        }
+      }
+
+      await loadSeats();
+      setSelectedSeatIds([]);
+      setFeedbackMessage(
+        getReservationSummary(successCount, conflictCount, failureCount),
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#f8fafc_0%,_#e2e8f0_42%,_#cbd5e1_100%)] px-6 py-10 text-slate-950">
@@ -86,8 +224,8 @@ export default function Home() {
               </h1>
               <p className="max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
                 Ten widok pokazuje aktualna dostepnosc miejsc z API rezerwacji.
-                Zarezerwowane miejsca sa zablokowane, a wybor wolnych miejsc dodamy
-                w nastepnym kroku.
+                Zarezerwowane miejsca sa zablokowane, a wolne miejsca mozesz
+                zaznaczyc i zarezerwowac ponizej.
               </p>
             </div>
 
@@ -101,7 +239,9 @@ export default function Home() {
         <section className="rounded-[2rem] border border-slate-200/80 bg-white/90 px-6 py-8 shadow-[0_16px_60px_rgba(15,23,42,0.10)] backdrop-blur sm:px-10">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-slate-950">Mapa miejsc</h2>
+              <h2 className="text-xl font-semibold text-slate-950">
+                Mapa miejsc
+              </h2>
               <p className="mt-1 text-sm text-slate-500">
                 Dostepnosc miejsc jest pobierana z API przy ladowaniu strony.
               </p>
@@ -114,7 +254,7 @@ export default function Home() {
                   className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2 text-sm text-slate-600"
                 >
                   <span
-                    className={`h-3 w-3 rounded-full border ${item.status === "free" ? "border-emerald-300 bg-emerald-400" : "border-slate-300 bg-slate-300"}`}
+                    className={`h-3 w-3 rounded-full border ${item.colorClass}`}
                   />
                   <span>{item.label}</span>
                 </div>
@@ -131,34 +271,90 @@ export default function Home() {
               Ladowanie miejsc...
             </div>
           ) : errorMessage ? (
-            <div className="rounded-3xl border border-rose-200 bg-rose-50 px-6 py-12 text-center text-rose-700">
-              {errorMessage}
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-rose-200 bg-rose-50 px-6 py-12 text-center text-rose-700">
+                {errorMessage}
+              </div>
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLoading(true);
+                    void loadSeats().finally(() => setIsLoading(false));
+                  }}
+                  className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Sprobuj ponownie
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              {rows.map(({ row, seats: rowSeats }) => (
-                <div
-                  key={row}
-                  className="grid grid-cols-[auto_1fr] items-center gap-3 sm:gap-4"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-sm font-semibold text-slate-600">
-                    R{row}
-                  </div>
+            <div className="space-y-6">
+              <div className="space-y-4">
+                {rows.map(({ row, seats: rowSeats }) => (
+                  <div
+                    key={row}
+                    className="grid grid-cols-[auto_1fr] items-center gap-3 sm:gap-4"
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-sm font-semibold text-slate-600">
+                      R{row}
+                    </div>
 
-                  <div className="grid grid-cols-4 gap-3 sm:grid-cols-8">
-                    {rowSeats.map((seat) => (
-                      <button
-                        key={seat.id}
-                        type="button"
-                        disabled={seat.status === "reserved"}
-                        className={`h-12 rounded-2xl border text-sm font-semibold transition-transform sm:h-14 ${seatStyles[seat.status]} ${seat.status === "free" ? "hover:-translate-y-0.5" : "cursor-not-allowed"}`}
-                      >
-                        {seat.number}
-                      </button>
-                    ))}
+                    <div className="grid grid-cols-4 gap-3 sm:grid-cols-8">
+                      {rowSeats.map((seat) => {
+                        const isSelected = selectedSeatIds.includes(seat.id);
+
+                        return (
+                          <button
+                            key={seat.id}
+                            type="button"
+                            onClick={() => toggleSeatSelection(seat)}
+                            disabled={
+                              seat.status === "reserved" || isSubmitting
+                            }
+                            className={`h-12 rounded-2xl border text-sm font-semibold transition-transform sm:h-14 ${
+                              isSelected
+                                ? "border-amber-300 bg-amber-100 text-amber-950 shadow-sm"
+                                : seatStyles[seat.status]
+                            }`}
+                            aria-pressed={isSelected}
+                          >
+                            {seat.number}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-slate-50 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-slate-900">
+                    Wybrane miejsca: {selectedSeatIds.length}
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    {selectedSeatIds.length > 0
+                      ? selectedSeatIds.join(", ")
+                      : "Zaznacz wolne miejsca, aby je zarezerwowac."}
+                  </p>
                 </div>
-              ))}
+
+                <button
+                  type="button"
+                  onClick={handleReservation}
+                  disabled={selectedSeatIds.length === 0 || isSubmitting}
+                  className="rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {isSubmitting ? "Trwa rezerwacja..." : "Rezerwuj"}
+                </button>
+              </div>
+
+              {feedbackMessage ? (
+                <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-6 py-4 text-sm text-emerald-800">
+                  {feedbackMessage}
+                </div>
+              ) : null}
             </div>
           )}
         </section>
