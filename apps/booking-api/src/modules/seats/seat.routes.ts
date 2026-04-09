@@ -7,6 +7,7 @@ import {
   SeatsAlreadyReservedError,
   SeatsNotFoundError,
 } from "./seat.errors";
+import { parseReserveSeatsRequest } from "./seat.requests";
 import { seatService } from "./seat.service";
 import type { ApiError } from "./seat.types";
 
@@ -31,7 +32,10 @@ seatRoutes.get("/", async (_req, res) => {
 
 seatRoutes.post("/:seatId/reserve", async (req, res) => {
   try {
-    const reservedSeat = await seatService.reserveSeat(req.params.seatId);
+    const { seatIds } = parseReserveSeatsRequest({
+      seatIds: [req.params.seatId],
+    });
+    const [reservedSeat] = await seatService.reserveSeats(seatIds);
     return res.status(200).json(reservedSeat);
   } catch (error) {
     if (
