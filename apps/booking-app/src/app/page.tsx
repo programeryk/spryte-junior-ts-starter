@@ -14,6 +14,9 @@ type Seat = {
 type ApiError = {
   error: string;
   message: string;
+  details?: {
+    seatIds?: string[];
+  };
 };
 
 type LoadSeatsOptions = {
@@ -64,38 +67,7 @@ const getPolishCountForm = (
 const getSeatWord = (count: number): string =>
   getPolishCountForm(count, "miejsce", "miejsca", "miejsc");
 
-const getFailedReservationWord = (count: number): string =>
-  getPolishCountForm(count, "rezerwacja", "rezerwacje", "rezerwacji");
-
-const getReservationSummary = (
-  successCount: number,
-  conflictCount: number,
-  failureCount: number,
-): string => {
-  const parts: string[] = [];
-
-  if (successCount > 0) {
-    parts.push(`Zarezerwowano ${successCount} ${getSeatWord(successCount)}.`);
-  }
-
-  if (conflictCount > 0) {
-    parts.push(
-      `Nie udalo sie zarezerwowac ${conflictCount} ${getSeatWord(conflictCount)} z powodu wczesniejszej rezerwacji.`,
-    );
-  }
-
-  if (failureCount > 0) {
-    parts.push(
-      `W ${failureCount} ${getFailedReservationWord(failureCount)} wystapil blad.`,
-    );
-  }
-
-  if (parts.length === 0) {
-    return "Nie wybrano miejsc do rezerwacji.";
-  }
-
-  return parts.join(" ");
-};
+const formatSeatIds = (seatIds: string[]): string => seatIds.join(", ");
 
 export default function Home() {
   const [seats, setSeats] = useState<Seat[]>([]);
@@ -219,48 +191,48 @@ export default function Home() {
     setWarningMessage(null);
 
     const seatIdsToReserve = [...selectedSeatIds];
-    let successCount = 0;
-    let conflictCount = 0;
-    let failureCount = 0;
 
     try {
-      for (const seatId of seatIdsToReserve) {
-        try {
-          const response = await fetch(
-            `${apiBaseUrl}/seats/${seatId}/reserve`,
-            {
-              method: "POST",
-            },
-          );
+      let reservationSummary = "Nie wybrano miejsc do rezerwacji.";
 
-          if (response.ok) {
-            successCount += 1;
-            continue;
-          }
+      try {
+        const response = await fetch(`${apiBaseUrl}/seats/reservations`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            seatIds: seatIdsToReserve,
+          }),
+        });
 
+        if (response.ok) {
+          reservationSummary = `Zarezerwowano ${seatIdsToReserve.length} ${getSeatWord(seatIdsToReserve.length)}.`;
+        } else {
           const apiError = (await response
             .json()
             .catch(() => null)) as ApiError | null;
+          const affectedSeatIds = apiError?.details?.seatIds;
 
-          if (
-            response.status === 409 ||
-            apiError?.error === "SEAT_ALREADY_RESERVED"
-          ) {
-            conflictCount += 1;
-            continue;
+          if (response.status === 409 && affectedSeatIds?.length) {
+            reservationSummary = `Rezerwacja nie powiodla sie. Co najmniej jedno miejsce jest juz zajete: ${formatSeatIds(affectedSeatIds)}.`;
+          } else if (response.status === 409) {
+            reservationSummary =
+              "Rezerwacja nie powiodla sie. Co najmniej jedno wybrane miejsce jest juz zajete.";
+          } else if (response.status === 400 || response.status === 404) {
+            reservationSummary =
+              apiError?.message ??
+              "Rezerwacja nie powiodla sie z powodu nieprawidlowych danych.";
+          } else {
+            reservationSummary =
+              "Nie udalo sie zarezerwowac wybranych miejsc. Sprobuj ponownie.";
           }
-
-          failureCount += 1;
-        } catch {
-          failureCount += 1;
         }
+      } catch {
+        reservationSummary =
+          "Nie udalo sie zarezerwowac wybranych miejsc. Sprobuj ponownie.";
       }
 
-      const reservationSummary = getReservationSummary(
-        successCount,
-        conflictCount,
-        failureCount,
-      );
       const didRefreshSeats = await loadSeats({
         showBlockingError: false,
       });
