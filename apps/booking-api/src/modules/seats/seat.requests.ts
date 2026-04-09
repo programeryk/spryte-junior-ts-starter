@@ -25,3 +25,13 @@ export const parseReserveSeatsRequest = (
     seatIds,
   };
 };
+
+export const parseSeatIdParam = (seatId: unknown): string => {
+  if (typeof seatId !== "string") {
+    throw new InvalidReservationRequestError(
+      "Seat id route parameter must be a string.",
+    );
+  }
+
+  return seatId;
+};

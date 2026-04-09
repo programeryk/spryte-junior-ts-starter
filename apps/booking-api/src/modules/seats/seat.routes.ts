@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 import { asyncRoute } from "./seat.http";
-import { parseReserveSeatsRequest } from "./seat.requests";
+import { parseReserveSeatsRequest, parseSeatIdParam } from "./seat.requests";
 import { seatService } from "./seat.service";
 
 export const seatRoutes = Router();
@@ -26,10 +26,8 @@ seatRoutes.post(
 seatRoutes.post(
   "/:seatId/reserve",
   asyncRoute(async (req, res) => {
-    const { seatIds } = parseReserveSeatsRequest({
-      seatIds: [req.params.seatId],
-    });
-    const [reservedSeat] = await seatService.reserveSeats(seatIds);
+    const seatId = parseSeatIdParam(req.params.seatId);
+    const reservedSeat = await seatService.reserveSeat(seatId);
     return res.status(200).json(reservedSeat);
   }),
 );

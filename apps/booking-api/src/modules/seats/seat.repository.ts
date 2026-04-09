@@ -7,18 +7,19 @@ import type { Seat } from "./seat.types";
 const seatsFilePath = path.resolve(process.cwd(), "data", "seats.json");
 
 let seatsCache: Seat[] | null = null;
+let initializePromise: Promise<void> | null = null;
 let reservationWriteQueue: Promise<void> = Promise.resolve();
 
 const readSeatsFromFile = async (): Promise<Seat[]> => {
   const fileContent = await readFile(seatsFilePath, "utf-8");
-  return JSON.parse(fileContent) as Seat[]; //no validation for JSON shape
+  return JSON.parse(fileContent) as Seat[]; // JSON shape validation is intentionally omitted in this MVP.
 };
 
 const cloneSeat = (seat: Seat): Seat => ({ ...seat });
 
 const getCacheOrThrow = (): Seat[] => {
   if (!seatsCache) {
-    throw new Error("Seat repository is not initialized"); //using english for debugging and collaboration coherence
+    throw new Error("Seat repository is not initialized");
   }
   return seatsCache;
 };
@@ -27,7 +28,14 @@ const initialize = async (): Promise<void> => {
   if (seatsCache) {
     return;
   }
-  seatsCache = await readSeatsFromFile();
+
+  if (!initializePromise) {
+    initializePromise = readSeatsFromFile().then((seats) => {
+      seatsCache = seats;
+    });
+  }
+
+  await initializePromise;
 };
 
 const runReservationWrite = async <T>(task: () => Promise<T>): Promise<T> => {

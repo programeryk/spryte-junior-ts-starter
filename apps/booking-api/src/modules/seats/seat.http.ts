@@ -16,7 +16,7 @@ const createApiError = (
 ): ApiError => ({
   error,
   message,
-  details,
+  ...(details ? { details } : {}),
 });
 
 export const asyncRoute =

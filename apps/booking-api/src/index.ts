@@ -1,7 +1,7 @@
 import { app } from "./app";
 import { seatRepository } from "./modules/seats/seat.repository";
 
-const port = Number(process.env.BACKPORT ?? 3001);
+const port = Number(process.env.PORT ?? 3001);
 
 const start = async (): Promise<void> => {
   try {

@@ -29,8 +29,7 @@ const getDuplicateSeatIds = (seatIds: string[]): string[] => {
 
 export const seatService = {
   async getSeats(): Promise<Seat[]> {
-    const seats = await seatRepository.getAll();
-    return seats.map((seat) => ({ ...seat }));
+    return seatRepository.getAll();
   },
 
   async reserveSeats(seatIds: string[]): Promise<Seat[]> {
