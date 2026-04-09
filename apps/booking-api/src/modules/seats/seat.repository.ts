@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { SeatAlreadyReservedError, SeatNotFoundError } from "./seat.errors";
+import { SeatsAlreadyReservedError, SeatsNotFoundError } from "./seat.errors";
 import type { Seat } from "./seat.types";
 
 const seatsFilePath = path.resolve(process.cwd(), "data", "seats.json");
@@ -54,19 +54,31 @@ export const seatRepository = {
       const seats = getCacheOrThrow().map(cloneSeat);
       const seatsById = new Map(seats.map((seat) => [seat.id, seat]));
       const reservedSeats: Seat[] = [];
+      const missingSeatIds: string[] = [];
+      const alreadyReservedSeatIds: string[] = [];
 
       for (const seatId of seatIds) {
         const seat = seatsById.get(seatId);
 
         if (!seat) {
-          throw new SeatNotFoundError(seatId);
+          missingSeatIds.push(seatId);
+          continue;
         }
 
         if (seat.status === "reserved") {
-          throw new SeatAlreadyReservedError(seatId);
+          alreadyReservedSeatIds.push(seatId);
+          continue;
         }
 
         reservedSeats.push(seat);
+      }
+
+      if (missingSeatIds.length > 0) {
+        throw new SeatsNotFoundError(missingSeatIds);
+      }
+
+      if (alreadyReservedSeatIds.length > 0) {
+        throw new SeatsAlreadyReservedError(alreadyReservedSeatIds);
       }
 
       for (const seat of reservedSeats) {

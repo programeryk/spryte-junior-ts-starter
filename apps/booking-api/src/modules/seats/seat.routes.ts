@@ -1,9 +1,11 @@
 import { Router } from "express";
 
 import {
-  InvalidSeatIdError,
-  SeatAlreadyReservedError,
-  SeatNotFoundError,
+  DuplicateSeatIdsError,
+  InvalidReservationRequestError,
+  InvalidSeatIdsError,
+  SeatsAlreadyReservedError,
+  SeatsNotFoundError,
 } from "./seat.errors";
 import { seatService } from "./seat.service";
 import type { ApiError } from "./seat.types";
@@ -32,17 +34,21 @@ seatRoutes.post("/:seatId/reserve", async (req, res) => {
     const reservedSeat = await seatService.reserveSeat(req.params.seatId);
     return res.status(200).json(reservedSeat);
   } catch (error) {
-    if (error instanceof InvalidSeatIdError) {
+    if (
+      error instanceof InvalidReservationRequestError ||
+      error instanceof InvalidSeatIdsError ||
+      error instanceof DuplicateSeatIdsError
+    ) {
       return res
         .status(400)
         .json(createApiError("INVALID_SEAT_ID", error.message));
     }
 
-    if (error instanceof SeatNotFoundError) {
+    if (error instanceof SeatsNotFoundError) {
       return res.status(404).json(createApiError("SEAT_NOT_FOUND", error.message));
     }
 
-    if (error instanceof SeatAlreadyReservedError) {
+    if (error instanceof SeatsAlreadyReservedError) {
       return res
         .status(409)
         .json(createApiError("SEAT_ALREADY_RESERVED", error.message));
