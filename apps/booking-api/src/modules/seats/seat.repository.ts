@@ -42,15 +42,16 @@ const runReservationWrite = async <T>(task: () => Promise<T>): Promise<T> => {
 };
 
 export const seatRepository = {
-  async getAll(): Promise<Seat[]> {
+  async initialize(): Promise<void> {
     await initialize();
+  },
+
+  async getAll(): Promise<Seat[]> {
     return getCacheOrThrow().map(cloneSeat);
   },
 
   async reserveSeats(seatIds: string[]): Promise<Seat[]> {
     return runReservationWrite(async () => {
-      await initialize();
-
       const seats = getCacheOrThrow().map(cloneSeat);
       const seatsById = new Map(seats.map((seat) => [seat.id, seat]));
       const reservedSeats: Seat[] = [];
